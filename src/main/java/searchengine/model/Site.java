@@ -33,4 +33,18 @@ public class Site {
 
     @OneToMany(mappedBy = "site",  targetEntity = Page.class)
     private List<Page> pages;
+
+    @OneToMany(mappedBy = "site",  targetEntity = Lemma.class)
+    private List<Lemma> lemmas;
+
+    @Override
+    public String toString() {
+        return "Page{" +
+                "id=" + id +
+                ", url=" + url +
+                ", name=" + name +
+                ", status=" + status +
+                ", lastError='" + lastError + '\'' +
+                '}';
+    }
 }

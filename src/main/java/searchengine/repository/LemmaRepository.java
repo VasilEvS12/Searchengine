@@ -6,12 +6,13 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
-import searchengine.model.Page;
+import searchengine.model.Lemma;
 
 @Repository
 @Transactional
-public interface PageRepository extends JpaRepository<Page, Integer> {
+public interface LemmaRepository extends JpaRepository<Lemma, Integer> {
     @Modifying
-    @Query(value = "delete from page where site_id=:siteId", nativeQuery = true)
-    void deletePagesBySiteId(@Param("siteId") Integer siteId);
+    @Query(value = "delete from lemma where site_id=:siteId", nativeQuery = true)
+    void deleteLemmasBySiteId(@Param("siteId") Integer siteId);
 }
+

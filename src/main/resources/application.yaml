@@ -1,0 +1,32 @@
+#debug: true
+spring:
+  datasource:
+    username: searcheng
+    password: 1q2w3e4r
+    url: jdbc:mysql://localhost:3306/search_engine
+    charset: utf8mb4
+  jpa:
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQL8Dialect
+    hibernate:
+      ddl-auto: update
+    # show-sql: true
+logging:
+  pattern:
+  level:
+    #org.hibernate.orm.jdbc.bind: trace
+    org.hibernate.sql: DEBUG
+    #org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+indexing-settings:
+  sites:
+    #- url: https://www.lenta.ru
+    #  name: Лента.ру
+    #- url: https://www.skillbox.ru
+    #  name: Skillbox
+    #- url: https://www.playback.ru
+    #  name: PlayBack.Ru
+    - url: https://et-cetera.ru/mobile/
+      name: МОСКОВСКИЙ ТЕАТР «ET CETERA»
+    - url: https://nopaper.ru
+      name: Электронный документооборот

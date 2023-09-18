@@ -1,5 +1,6 @@
 package searchengine.processors;
 
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import org.jsoup.Connection;
@@ -7,10 +8,12 @@ import org.jsoup.HttpStatusException;
 import org.jsoup.Jsoup;
 import org.jsoup.UnsupportedMimeTypeException;
 import org.jsoup.nodes.Document;
+import org.jsoup.safety.Safelist;
 import org.jsoup.select.Elements;
-import searchengine.model.Page;
-import searchengine.model.Site;
-import searchengine.model.Status;
+
+import searchengine.model.*;
+import searchengine.repository.IndexRepository;
+import searchengine.repository.LemmaRepository;
 import searchengine.repository.PageRepository;
 import searchengine.repository.SiteRepository;
 
@@ -18,25 +21,50 @@ import java.io.IOException;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.RecursiveAction;
 import java.util.logging.Logger;
 
 
-@RequiredArgsConstructor
 public class SiteIndexator extends RecursiveAction {
+    @Getter
     @Setter
     private Site site;
+
+    @Getter
+    @Setter
+    private Page page;
+
+    @Getter
     @Setter
     private String pageUrl;
-    @Setter
-    private HashSet<Page> pages;
 
-    private final SiteRepository siteRepository;
-    private final PageRepository pageRepository;
+    @Getter
+    @Setter
+    private Set<Page> pages;
+
+    @Getter
+    @Setter
+    private HashMap<String, Lemma> lemmas;
+
+    @Getter
+    @Setter
+    private Set<Index> indexes;
+
+    @Setter
+    private SiteRepository siteRepository;
+
+    @Setter
+    private PageRepository pageRepository;
+
+    @Setter
+    private LemmaRepository lemmaRepository;
+
+    @Setter
+    private IndexRepository indexRepository;
+
+    private boolean isInterrupted = false;
 
     private Logger logger = Logger.getLogger(SiteIndexator.class.getName());
 
@@ -45,10 +73,10 @@ public class SiteIndexator extends RecursiveAction {
         siteRepository.save(site);
     }
 
-    private Document getHtml(String url) throws InterruptedException {
+    private Document getHtml(String url) {
         Document htmlDoc = null;
         String errMessage = "";
-        Page page = new Page();
+        page = new Page();
 
         page.setPath(url);
         page.setSite(site);
@@ -58,9 +86,8 @@ public class SiteIndexator extends RecursiveAction {
             }
         }
 
-        Thread.sleep(100);
-
         try {
+            Thread.sleep(100);
             Connection.Response response = Jsoup.connect(url).execute();
             page.setCode(response.statusCode());
             if (response.statusCode() == 200) {
@@ -81,15 +108,49 @@ public class SiteIndexator extends RecursiveAction {
             errMessage = url + " - не удается получить доступ к сайту";
         } catch (IOException e) {
             errMessage = url + e.getMessage();
+        } catch (InterruptedException e){
+            errMessage = url + " - прерывание пользователя";
         }
 
-        if (pageUrl == null) {
+        if (pageUrl == null && !errMessage.equals("")) {
             site.setLastError(errMessage);
             site.setStatus(Status.FAILED);
+            logger.info(errMessage);
         }
-        if (!errMessage.equals(""))
-            logger.info(url + " Ошибка " + errMessage);
         return htmlDoc;
+    }
+
+    private void lemmatization(String htmlText) {
+        String pageText = Jsoup.parse(htmlText).text();
+        pageText = Jsoup.clean(pageText, Safelist.none());
+        try {
+            LemmaFinder lemmaFinder = LemmaFinder.getInstance();
+            Map<String, Integer> lemmaList = lemmaFinder.collectLemmas(pageText);
+            lemmaList.keySet().forEach(l -> {
+                Lemma lemma;
+                synchronized (lemmas) {
+                    if (lemmas.containsKey(l)) {
+                        lemma = lemmas.get(l);
+                        lemma.IncreaseFrequency();
+                    } else {
+                        lemma = new Lemma();
+                        lemma.setSite(site);
+                        lemma.setLemma(l);
+                        lemma.setFrequency(1);
+                        lemmas.put(l, lemma);
+                    }
+                }
+                synchronized (indexes) {
+                    Index index = new Index();
+                    index.setPage(page);
+                    index.setLemma(lemma);
+                    index.setRank(lemmaList.get(l));
+                    indexes.add(index);
+                }
+            });
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private void processPage(String url) throws InterruptedException {
@@ -98,6 +159,7 @@ public class SiteIndexator extends RecursiveAction {
         if (htmlDoc == null) {
             return;
         }
+        lemmatization(htmlDoc.toString());
         Elements links = htmlDoc.select("a[abs:href~=^" + htmlDoc.location() + "((?!(#|\\?)).)*$]");
         logger.info(url + " - найдено ссылок: " + links.size());
 
@@ -105,18 +167,21 @@ public class SiteIndexator extends RecursiveAction {
                 .filter(l -> !htmlDoc.baseUri().equals(l))
                 .distinct()
                 .forEach(l -> {
-                    SiteIndexator indexator = new SiteIndexator(siteRepository, pageRepository);
+                    SiteIndexator indexator = new SiteIndexator();
+                    setSiteRepository(siteRepository);
+                    setPageRepository(pageRepository);
+                    setLemmaRepository(lemmaRepository);
+                    setIndexRepository(indexRepository);
                     indexator.setSite(site);
                     indexator.setPageUrl(l);
                     indexator.setPages(pages);
-                    indexator.fork();
+                    indexator.setLemmas(lemmas);
+                    indexator.setIndexes(indexes);
                     pageIndexators.add(indexator);
+                    indexator.fork();
                 });
         logger.info(url + " - потоков запущено " + (long) pageIndexators.size());
         pageIndexators.forEach(SiteIndexator::join);
-        if (pageUrl == null) {
-            site.setStatus(Status.INDEXED);
-        }
     }
 
 
@@ -127,24 +192,35 @@ public class SiteIndexator extends RecursiveAction {
                 Site existSite = siteRepository.findFirstSiteByUrl(site.getUrl());
                 if (existSite != null) {
                     site = existSite;
+                    site.setStatus(Status.INDEXING);
+                    site.setLastError("");
+                    saveSite();
                     logger.info(site.getUrl() + " - удаление данных");
-                    pageRepository.deletePagesBySiteId(existSite.getId());
+                    indexRepository.deleteIndexesBySiteId(site.getId());
+                    pageRepository.deletePagesBySiteId(site.getId());
+                    lemmaRepository.deleteLemmasBySiteId(site.getId());
+                }else {
+                    saveSite();
                 }
-                site.setStatus(Status.INDEXED);
-                saveSite();
+                logger.info(site.getUrl() + " - обработка " +site.getStatus());
                 processPage(site.getUrl());
-                saveSite();
                 pageRepository.saveAll(pages.stream().toList());
-                logger.info(site.getUrl() + " - индексация завершена");
+                lemmaRepository.saveAll(lemmas.values());
+                indexRepository.saveAll(indexes.stream().toList());
+                if (site.getStatus()==Status.INDEXING){
+                    site.setStatus(Status.INDEXED);
+                }
+                saveSite();
+                logger.info(site.getUrl() + " - завершение обработки " +site.getStatus());
             } else {
+                //logger.info(pageUrl+ " - пропуск");
                 processPage(pageUrl);
             }
         } catch (InterruptedException | CancellationException e) {
-            String  errMessage = site.getUrl() + " - индексация прервана пользователем";
-            logger.info(errMessage);
-            site.setLastError(errMessage);
+            String errMessage = site.getUrl() + " - индексация прервана пользователем";
             site.setStatus(Status.FAILED);
-            saveSite();
+            site.setLastError(errMessage);
+            logger.info(errMessage);
         }
     }
 }

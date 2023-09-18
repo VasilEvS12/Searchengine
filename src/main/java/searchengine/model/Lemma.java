@@ -6,12 +6,11 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.util.List;
-
-@Entity
 @Getter
 @Setter
+@Entity
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
-public class Page {
+public class Lemma {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private int id;
@@ -20,26 +19,27 @@ public class Page {
     @JoinColumn(name="site_id")
     private Site site;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(length = 255)
     @EqualsAndHashCode.Include
-    String path;
+    private String lemma;
 
     @Column
-    int code;
+    private int frequency;
 
-    @Column(columnDefinition = "MEDIUMTEXT")
-    String content;
-
-    @OneToMany(mappedBy = "page",  targetEntity = Index.class)
+    @OneToMany(mappedBy = "lemma", targetEntity = Index.class)
     private List<Page> indexes;
 
     @Override
     public String toString() {
-        return "Page{" +
+        return "Lemma{" +
                 "id=" + id +
                 ", site_id=" + site.getId() +
-                ", path='" + path + '\'' +
-                ", code=" + code +
+                ", lemma='" + lemma + '\'' +
+                ", frequency=" + frequency +
                 '}';
+    }
+
+    public void IncreaseFrequency(){
+        frequency++;
     }
 }
