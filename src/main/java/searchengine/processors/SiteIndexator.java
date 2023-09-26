@@ -1,7 +1,6 @@
 package searchengine.processors;
 
 import lombok.Getter;
-import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import org.jsoup.Connection;
 import org.jsoup.HttpStatusException;
@@ -78,7 +77,7 @@ public class SiteIndexator extends RecursiveAction {
         String errMessage = "";
         page = new Page();
 
-        page.setPath(url);
+        page.setPath(url.replaceAll("http(s)?://(www\\.)?[^/]*/?", "/"));
         page.setSite(site);
         synchronized (pages) {
             if (!pages.add(page)) {
