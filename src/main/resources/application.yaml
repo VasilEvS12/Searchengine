@@ -30,3 +30,9 @@ indexing-settings:
       name: МОСКОВСКИЙ ТЕАТР «ET CETERA»
     - url: https://nopaper.ru
       name: Электронный документооборот
+    - url: https://www.svetlovka.ru/
+      name: Библиотека Светловка
+    - url: https://www.lutherancathedral.ru/
+      name: Собор Петра и Павла
+    - ulr: https://radiomv.ru/
+      name: Радио Милицейская волна
